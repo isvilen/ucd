@@ -190,9 +190,31 @@ static_data_funs_test_() ->
                   ])
           end,
           fun code:purge/1,
-  [ ?_assertMatch({{0,127}, <<"Basic Latin">>}, lists:nth(1,ucd_static:blocks()))
-  , ?_assertMatch({<<"LATIN CAPITAL LETTER A WITH MACRON AND GRAVE">>, [16#0100, 16#0300]},
+  [ ?_assertEqual({{0,127}, <<"Basic Latin">>}, lists:nth(1,ucd_static:blocks()))
+  , ?_assertEqual({<<"LATIN CAPITAL LETTER A WITH MACRON AND GRAVE">>, [16#0100, 16#0300]},
                   lists:nth(1,ucd_static:named_sequences()))
+  ]}.
+
+
+name_data_funs_test_() ->
+  {setup, fun () ->
+             load(["-module(ucd_name)."
+                  ,"name(CP) -> ucd:name(CP)."
+                  ,"range(CP) -> ucd:range(CP)."
+                  ,"ranges() -> ucd:ranges()."
+                  ])
+          end,
+          fun code:purge/1,
+  [ ?_assertEqual(<<"LATIN SMALL LETTER A">>, ucd_name:name($a))
+  , ?_assertEqual(undefined, ucd_name:name($\n))
+  , ?_assertEqual(undefined, ucd_name:name(16#3400))
+
+  , ?_assertEqual({{cjk_ideograph,{extension,"A"}}, {16#3400, 16#4DB5}},
+                  lists:nth(1,ucd_name:ranges()))
+
+  , ?_assertEqual({cjk_ideograph,{extension,"A"}}, ucd_name:range(16#3400))
+  , ?_assertEqual(hangul_syllable, ucd_name:range(16#AC00))
+  , ?_assertEqual({high_surrogate, non_private_use}, ucd_name:range(16#D800))
   ]}.
 
 

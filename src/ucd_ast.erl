@@ -10,7 +10,8 @@ context() ->
 
 
 add(Name, [], Ctx) when Name == blocks
-                      ; Name == named_sequences ->
+                      ; Name == named_sequences
+                      ; Name == ranges ->
     Fun = fun_name(Name),
     {ok, ?Q("'@Fun@'()"), sets:add_element(Name, Ctx)};
 
@@ -45,7 +46,9 @@ add(Name, [Arg], Ctx) when Name == category
                          ; Name == sentence_break_property
                          ; Name == word_break_property
                          ; Name == hangul_syllable_type
-                         ; Name == block ->
+                         ; Name == block
+                         ; Name == name
+                         ; Name == range ->
     Fun = fun_name(Name),
     {ok, ?Q("'@Fun@'(_@Arg)"), sets:add_element(Name, Ctx)};
 
@@ -89,13 +92,16 @@ form(Name, Data) when Name == decomposition
                     ; Name == common_case_folding
                     ; Name == simple_case_folding
                     ; Name == full_case_folding
-                    ; Name == turkic_case_folding ->
+                    ; Name == turkic_case_folding
+                    ; Name == name ->
     codepoint_data_fun(Name, Data, fun map_ast/3);
 
-form(Name, Data) when Name == block ->
+form(Name, Data) when Name == block
+                    ; Name == range ->
     codepoint_data_fun(Name, Data, fun binary_index_ast/3);
 
 form(Name, Data) when Name == blocks
+                    ; Name == ranges
                     ; Name == named_sequences ->
     static_data_fun(Name, Data).
 
@@ -182,6 +188,15 @@ data_values(Kind, Data) when Kind == block; Kind == blocks ->
 
 data_values(Kind, Data) when Kind == named_sequences ->
     named_sequences_values(Data);
+
+data_values(name, Data)  ->
+    name_values(Data);
+
+data_values(range, Data)  ->
+    range_values(Data);
+
+data_values(ranges, Data)  ->
+    ranges_values(Data);
 
 data_values(Kind, Data) ->
     unicode_data_values(Kind, Data).
@@ -377,6 +392,52 @@ blocks_values(Data) ->
 named_sequences_values(Data) ->
     {Vs, Data1} = data(named_sequences, Data),
     {[{N,CPs} || #named_sequence{name=N, codepoints=CPs} <- Vs], Data1}.
+
+
+name_values(Data) ->
+    {CPs, Data1} = data(unicode_data, Data),
+    Vs = [{C, N} || #unicode_data{code=C,name=N,category=Cat} <- CPs
+                  , is_integer(C)
+                  , Cat /= 'Cc'],
+    {Vs, Data1}.
+
+
+range_values(Data) ->
+    {CPs, Data1} = data(unicode_data, Data),
+    Vs = [{C, range_value(N)} || #unicode_data{code=C,name=N} <- CPs, is_tuple(C)],
+    {Vs, Data1}.
+
+range_value(<<"CJK Ideograph">>) ->
+    cjk_ideograph;
+
+range_value(<<"CJK Ideograph Extension ",Rest/binary>>) ->
+    {cjk_ideograph, {extension, binary_to_list(Rest)}};
+
+range_value(<<"Private Use">>) ->
+    private_use;
+
+range_value(<<"Plane ",Id:2/binary," Private Use">>) ->
+    {private_use, {plane, list_to_integer(binary_to_list(Id))}};
+
+range_value(<<"Hangul Syllable">>) ->
+    hangul_syllable;
+
+range_value(<<"Tangut Ideograph">>) ->
+    tangut_ideograph;
+
+range_value(<<"Non Private Use High Surrogate">>) ->
+    {high_surrogate, non_private_use};
+
+range_value(<<"Private Use High Surrogate">>) ->
+    {high_surrogate, private_use};
+
+range_value(<<"Low Surrogate">>) ->
+    low_surrogate.
+
+
+ranges_values(Data) ->
+    {Vs, Data1} = range_values(Data),
+    {[{R,C} || {C,R} <- Vs], Data1}.
 
 
 data_default(category) -> 'Cn';

@@ -10,7 +10,7 @@ invalid_fun_test() ->
 
 
 
-data_funs_test_() ->
+codepoint_data_funs_test_() ->
   {setup, fun () ->
              load(["-module(ucd_data)."
                   ,"category(CP) -> ucd:category(CP)."
@@ -179,7 +179,21 @@ data_funs_test_() ->
   , ?_assertEqual(<<"Cyrillic">>, ucd_data:block(16#400))
   , ?_assertEqual(<<"No_Block">>, ucd_data:block(16#E0080))
   , ?_assertEqual(<<"Supplementary Private Use Area-B">>, ucd_data:block(16#100000))
-]}.
+  ]}.
+
+
+static_data_funs_test_() ->
+  {setup, fun () ->
+             load(["-module(ucd_static)."
+                  ,"blocks() -> ucd:blocks()."
+                  ,"named_sequences() -> ucd:named_sequences()."
+                  ])
+          end,
+          fun code:purge/1,
+  [ ?_assertMatch({{0,127}, <<"Basic Latin">>}, lists:nth(1,ucd_static:blocks()))
+  , ?_assertMatch({<<"LATIN CAPITAL LETTER A WITH MACRON AND GRAVE">>, [16#0100, 16#0300]},
+                  lists:nth(1,ucd_static:named_sequences()))
+  ]}.
 
 
 compile(Code) ->

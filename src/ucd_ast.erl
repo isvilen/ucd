@@ -9,6 +9,11 @@ context() ->
     sets:new().
 
 
+add(Name, [], Ctx) when Name == blocks
+                      ; Name == named_sequences ->
+    Fun = fun_name(Name),
+    {ok, ?Q("'@Fun@'()"), sets:add_element(Name, Ctx)};
+
 add(Name, [Arg], Ctx) when Name == category
                          ; Name == combining_class
                          ; Name == bidi_class
@@ -88,7 +93,11 @@ form(Name, Data) when Name == decomposition
     codepoint_data_fun(Name, Data, fun map_ast/3);
 
 form(Name, Data) when Name == block ->
-    codepoint_data_fun(Name, Data, fun binary_index_ast/3).
+    codepoint_data_fun(Name, Data, fun binary_index_ast/3);
+
+form(Name, Data) when Name == blocks
+                    ; Name == named_sequences ->
+    static_data_fun(Name, Data).
 
 
 codepoint_data_fun(Name, Data, ASTFun) ->
@@ -100,6 +109,12 @@ codepoint_data_fun(Name, Data, ASTFun) ->
         ,"  _@AST;"
         ,"'@Fun@'(_) -> error(badarg)."])
     ,Data1}.
+
+
+static_data_fun(Name, Data) ->
+    Fun = fun_name(Name),
+    {Values, Data1} = data_values(Name, Data),
+    {?Q("'@Fun@'() -> _@Values@.") ,Data1}.
 
 
 data_values(numeric, Data) ->
@@ -162,8 +177,11 @@ data_values(word_break_property, Data) ->
 data_values(hangul_syllable_type, Data) ->
     hangul_syllable_type_values(Data);
 
-data_values(block, Data) ->
+data_values(Kind, Data) when Kind == block; Kind == blocks ->
     blocks_values(Data);
+
+data_values(Kind, Data) when Kind == named_sequences ->
+    named_sequences_values(Data);
 
 data_values(Kind, Data) ->
     unicode_data_values(Kind, Data).
@@ -354,6 +372,11 @@ hangul_syllable_type_values(Data) ->
 blocks_values(Data) ->
     {Vs, Data1} = data(blocks, Data),
     {[{R,N} || #block{range=R,name=N} <- Vs], Data1}.
+
+
+named_sequences_values(Data) ->
+    {Vs, Data1} = data(named_sequences, Data),
+    {[{N,CPs} || #named_sequence{name=N, codepoints=CPs} <- Vs], Data1}.
 
 
 data_default(category) -> 'Cn';

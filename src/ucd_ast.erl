@@ -48,7 +48,8 @@ add(Name, [Arg], Ctx) when Name == category
                          ; Name == hangul_syllable_type
                          ; Name == block
                          ; Name == name
-                         ; Name == range ->
+                         ; Name == range
+                         ; Name == prop_list ->
     Fun = fun_name(Name),
     {ok, ?Q("'@Fun@'(_@Arg)"), sets:add_element(Name, Ctx)};
 
@@ -75,7 +76,8 @@ form(Name, Data) when Name == category
                     ; Name == grapheme_break_property
                     ; Name == sentence_break_property
                     ; Name == word_break_property
-                    ; Name == hangul_syllable_type ->
+                    ; Name == hangul_syllable_type
+                    ; Name == prop_list ->
     codepoint_data_fun(Name, Data, fun map_and_binary_index_ast/3);
 
 form(Name, Data) when Name == decomposition
@@ -197,6 +199,9 @@ data_values(range, Data)  ->
 
 data_values(ranges, Data)  ->
     ranges_values(Data);
+
+data_values(prop_list, Data)  ->
+    prop_list_values(Data);
 
 data_values(Kind, Data) ->
     unicode_data_values(Kind, Data).
@@ -440,6 +445,26 @@ ranges_values(Data) ->
     {[{R,C} || {C,R} <- Vs], Data1}.
 
 
+prop_list_values(Data) ->
+    {Vs, Data1} = data(prop_list, Data),
+    {prop_list_values_1(Vs), Data1}.
+
+prop_list_values_1(Vs) ->
+    Vs1 = lists:foldl(fun prop_list_values_1/2, #{}, Vs),
+    Vs2 = lists:keysort(1, maps:to_list(Vs1)),
+    [{CP, lists:sort(Ps)} || {CP, Ps} <- Vs2].
+
+prop_list_values_1(#prop_list{code={F,T}, property=V}, Acc) ->
+    lists:foldl(fun (CP, Acc0) -> prop_list_add_value(CP, V, Acc0) end,
+                Acc, lists:seq(F,T));
+
+prop_list_values_1(#prop_list{code=CP, property=V}, Acc) ->
+    prop_list_add_value(CP, V, Acc).
+
+prop_list_add_value(CP, V, Acc) ->
+    maps:update_with(CP, fun (Vs) -> [V | Vs] end, [V] , Acc).
+
+
 data_default(category) -> 'Cn';
 data_default(combining_class) -> 0;
 data_default(bidi_class) -> 'L';
@@ -457,6 +482,7 @@ data_default(grapheme_break_property) -> other;
 data_default(word_break_property) -> other;
 data_default(sentence_break_property) -> other;
 data_default(block) -> <<"No_Block">>;
+data_default(prop_list) -> [];
 data_default(_) -> undefined.
 
 

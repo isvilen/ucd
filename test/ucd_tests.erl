@@ -45,6 +45,7 @@ codepoint_data_funs_test_() ->
                   ,"word_break_property(CP) -> ucd:word_break_property(CP)."
                   ,"hangul_syllable_type(CP) -> ucd:hangul_syllable_type(CP)."
                   ,"block(CP) -> ucd:block(CP)."
+                  ,"prop_list(CP) -> ucd:prop_list(CP)."
                   ])
           end,
           fun code:purge/1,
@@ -179,6 +180,9 @@ codepoint_data_funs_test_() ->
   , ?_assertEqual(<<"Cyrillic">>, ucd_data:block(16#400))
   , ?_assertEqual(<<"No_Block">>, ucd_data:block(16#E0080))
   , ?_assertEqual(<<"Supplementary Private Use Area-B">>, ucd_data:block(16#100000))
+
+  , ?_assertEqual([pattern_white_space, white_space], ucd_data:prop_list($\s))
+  , ?_assertEqual([], ucd_data:prop_list(16#100000))
   ]}.
 
 

@@ -249,6 +249,7 @@ specialized_funs_test_() ->
                   ,"mwb(CP) -> ucd:word_break_property(CP,[mid_letter, mid_num_let, mid_num])."
                   ,"scb(CP) -> ucd:sentence_break_property(CP, close)."
                   ,"cc(CP) -> ucd:combining_class(CP, 240)."
+                  ,"ccn(CP)-> ucd:combining_class(CP, not [0, 230])."
                   ])
           end,
           fun code:purge/1,
@@ -278,6 +279,10 @@ specialized_funs_test_() ->
 
   , ?_assertEqual(true, ucd_special:cc(16#345))
   , ?_assertEqual(false, ucd_special:cc($A))
+
+  , ?_assertEqual(true, ucd_special:ccn(16#33B))
+  , ?_assertEqual(false, ucd_special:ccn($\s))
+  , ?_assertEqual(false, ucd_special:ccn(16#33E))
   ]}.
 
 

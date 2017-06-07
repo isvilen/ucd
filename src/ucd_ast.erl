@@ -128,28 +128,35 @@ form({Name, Arg}, Data) ->
 
 
 validate_fun_arg(prop_list, Arg) ->
-    validate_atom_list_arg(Arg, prop_list_properties());
+    validate_fun_arg_1(Arg, fun validate_atom_list_arg/2, prop_list_properties());
 
 validate_fun_arg(category, Arg) ->
-    validate_atom_list_arg(Arg, unicode_data_categories());
+    validate_fun_arg_1(Arg, fun validate_atom_list_arg/2, unicode_data_categories());
 
 validate_fun_arg(bidi_class, Arg) ->
-    validate_atom_list_arg(Arg, unicode_data_bidi_classes());
+    validate_fun_arg_1(Arg, fun validate_atom_list_arg/2, unicode_data_bidi_classes());
 
 validate_fun_arg(line_break, Arg) ->
-    validate_atom_list_arg(Arg, line_break_classes());
+    validate_fun_arg_1(Arg, fun validate_atom_list_arg/2, line_break_classes());
 
 validate_fun_arg(grapheme_break_property, Arg) ->
-    validate_atom_list_arg(Arg, grapheme_break_classes());
+    validate_fun_arg_1(Arg, fun validate_atom_list_arg/2, grapheme_break_classes());
 
 validate_fun_arg(word_break_property, Arg) ->
-    validate_atom_list_arg(Arg, word_break_classes());
+    validate_fun_arg_1(Arg, fun validate_atom_list_arg/2, word_break_classes());
 
 validate_fun_arg(sentence_break_property, Arg) ->
-    validate_atom_list_arg(Arg, sentence_break_classes());
+    validate_fun_arg_1(Arg, fun validate_atom_list_arg/2, sentence_break_classes());
 
 validate_fun_arg(combining_class, Arg) ->
-    validate_integer_list_arg(Arg, {0, 255}).
+    validate_fun_arg_1(Arg, fun validate_integer_list_arg/2, {0, 255}).
+
+
+validate_fun_arg_1(Arg, Fun, Data) ->
+    case Arg of
+        ?Q("not _@Arg1") -> {'not', Fun(Arg1, Data)};
+        _                -> Fun(Arg, Data)
+    end.
 
 
 codepoint_data_fun(Name, Data, ASTFun) ->
@@ -264,7 +271,7 @@ data_values(Kind, Data) ->
 
 data_values(prop_list, Props, Data) ->
     {Vs, Data1} = prop_list_values(Data),
-    {[{C, true} || {C, Ps} <- Vs, (Props -- Ps) == []], Data1};
+    {codepoint_true_values(Vs, Props), Data1};
 
 data_values(line_break, Classes, Data) ->
     {Vs, Data1} = line_break_values(Data),
@@ -548,23 +555,32 @@ prop_list_add_value(CP, V, Acc) ->
 
 
 codepoint_true_values(Vs, Filter) ->
-    Vs1 = lists:foldl(fun(V, Acc) -> codepoint_true_value(V, Filter, Acc) end,
-                      #{}, Vs),
+    FilterFun = codepoint_value_filter(Filter),
+    Vs1 = lists:foldl(fun ({C, V}, Acc) ->
+                          case FilterFun(V) of
+                              true  -> codepoint_value_add(C, Acc);
+                              false -> Acc
+                          end
+                      end, #{}, Vs),
     lists:keysort(1, maps:to_list(Vs1)).
 
-codepoint_true_value({C, V}, Filter, Acc) ->
-    case lists:member(V, Filter) of
-        false ->
-            Acc;
-        true ->
-            case C of
-                {F, T} ->
-                    lists:foldl(fun (CP, Acc0) -> Acc0#{CP => true} end,
-                                Acc, lists:seq(F,T));
-                CP ->
-                    Acc#{CP => true}
-            end
+
+codepoint_value_filter({'not', Filter}) ->
+    Fun = codepoint_value_filter(Filter),
+    fun (V) -> not Fun(V) end;
+
+codepoint_value_filter(Filter) ->
+    fun (V) when is_list(V) ->
+        lists:any(fun (V1) -> lists:member(V1, Filter) end, V);
+        (V) -> lists:member(V, Filter)
     end.
+
+
+codepoint_value_add({F, T}, Acc) ->
+    lists:foldl(fun (CP, Acc0) -> Acc0#{CP => true} end, Acc, lists:seq(F,T));
+
+codepoint_value_add(CP, Acc) ->
+    Acc#{CP => true}.
 
 
 data_default(category) -> 'Cn';
@@ -678,13 +694,19 @@ map_and_binary_index_ast(VarAST, Values, Default) ->
 
 
 fun_name(BaseName) ->
-    fun_name_1(BaseName, "").
+    fun_name(BaseName, "", []).
+
+fun_name(BaseName, {Op, Vs}) ->
+    fun_name(BaseName, atom_to_list(Op), Vs);
 
 fun_name(BaseName, Vs) ->
-    fun_name_1(BaseName, ["_" | [[fun_name_suffix(V), $_] || V <- Vs]]).
+    fun_name(BaseName, "", Vs).
 
-fun_name_1(BaseName, Suffix) ->
-    list_to_atom(lists:flatten(["$ucd_", atom_to_list(BaseName), Suffix, "$"])).
+
+fun_name(BaseName, Pre, Vs) ->
+    H = case Pre of "" -> "_"; _  -> ["_", Pre, "_"] end,
+    T = [[fun_name_suffix(V), $_] || V <- Vs],
+    list_to_atom(lists:flatten(["$ucd_", atom_to_list(BaseName), H, T, "$"])).
 
 
 % prop_list

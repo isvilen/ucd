@@ -250,6 +250,7 @@ specialized_funs_test_() ->
                   ,"scb(CP) -> ucd:sentence_break_property(CP, close)."
                   ,"cc(CP) -> ucd:combining_class(CP, 240)."
                   ,"ccn(CP)-> ucd:combining_class(CP, not [0, 230])."
+                  ,"name_correction(CP)-> ucd:name_aliases(CP, correction)."
                   ])
           end,
           fun code:purge/1,
@@ -283,6 +284,9 @@ specialized_funs_test_() ->
   , ?_assertEqual(true, ucd_special:ccn(16#33B))
   , ?_assertEqual(false, ucd_special:ccn($\s))
   , ?_assertEqual(false, ucd_special:ccn(16#33E))
+
+  , ?_assertEqual(<<"PRESENTATION FORM FOR VERTICAL RIGHT WHITE LENTICULAR BRACKET">>,
+                  ucd_special:name_correction(16#FE18))
   ]}.
 
 

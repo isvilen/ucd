@@ -60,7 +60,8 @@ add(Name, [Arg1, Arg2], Ctx) when Name == prop_list
                                 ; Name == grapheme_break_property
                                 ; Name == sentence_break_property
                                 ; Name == word_break_property
-                                ; Name == combining_class ->
+                                ; Name == combining_class
+                                ; Name == name_aliases ->
     try validate_fun_arg(Name, Arg2) of
         V ->
             Fun = fun_name(Name, V),
@@ -149,7 +150,10 @@ validate_fun_arg(sentence_break_property, Arg) ->
     validate_fun_arg_1(Arg, fun validate_atom_list_arg/2, sentence_break_classes());
 
 validate_fun_arg(combining_class, Arg) ->
-    validate_fun_arg_1(Arg, fun validate_integer_list_arg/2, {0, 255}).
+    validate_fun_arg_1(Arg, fun validate_integer_list_arg/2, {0, 255});
+
+validate_fun_arg(name_aliases, Arg) ->
+    validate_fun_arg_1(Arg, fun validate_atom_list_arg/2, name_aliases_types()).
 
 
 validate_fun_arg_1(Arg, Fun, Data) ->
@@ -288,6 +292,10 @@ data_values(sentence_break_property, Classes, Data) ->
 data_values(word_break_property, Classes, Data) ->
     {Vs, Data1} = word_break_property_values(Data),
     {codepoint_true_values(Vs, Classes), Data1};
+
+data_values(name_aliases, Types, Data) ->
+    {Vs, Data1} = data(name_aliases, Data),
+    {name_aliases_values(Vs, Types), Data1};
 
 data_values(Kind, Requested, Data) ->
     {Vs, Data1} = unicode_data_values(Kind, Data, undefined),
@@ -583,6 +591,25 @@ codepoint_value_add(CP, Acc) ->
     Acc#{CP => true}.
 
 
+name_aliases_values(Vs, Types) ->
+    Vs1 = lists:foldl(fun (V,Acc) -> name_aliases_value(V,Types,Acc) end, #{}, Vs),
+    lists:keysort(1, maps:to_list(Vs1)).
+
+name_aliases_value(V, Types, Acc) ->
+    case name_aliases_match(V, Types) of
+        true -> name_aliases_add(V, Acc);
+        false -> Acc
+    end.
+
+name_aliases_match(#name_alias{type=T}, Types) ->
+    lists:member(T, Types).
+
+name_aliases_add(#name_alias{codepoint=CP, name=V}, Acc) ->
+    maps:update_with(CP, fun (V0) when is_list(V0) -> [V | V0];
+                             (V0)                  -> [V , V0]
+                         end, V , Acc).
+
+
 data_default(category) -> 'Cn';
 data_default(combining_class) -> 0;
 data_default(bidi_class) -> 'L';
@@ -601,6 +628,7 @@ data_default(word_break_property) -> other;
 data_default(sentence_break_property) -> other;
 data_default(block) -> <<"No_Block">>;
 data_default(prop_list) -> [];
+data_default({name_aliases, _}) -> undefined;
 data_default({_, _}) -> false;
 data_default(_) -> undefined.
 
@@ -774,6 +802,11 @@ fun_name_suffix(single_quote)                       -> "sq";
 fun_name_suffix(spacing_mark)                       -> "sm";
 fun_name_suffix(upper)                              -> "up";
 
+fun_name_suffix(correction)                         -> "cor";
+fun_name_suffix(alternate)                          -> "alt";
+fun_name_suffix(figment)                            -> "fig";
+fun_name_suffix(abbreviation)                       -> "abr";
+
 fun_name_suffix(V) when is_atom(V)                  -> atom_to_list(V);
 fun_name_suffix(V) when is_integer(V)               -> integer_to_list(V).
 
@@ -858,6 +891,10 @@ line_break_classes() ->
     [bk, cm, cr, gl, lf, nl, sg, sp, wj, zw, zwj, ai, al, b2, ba, bb, cb, cj, cl
     ,cp, eb, em, ex, h2, h3, hl, hy, id, in, is, jl, jt, jv, ns, nu, op, po, pr
     ,qu, ri, sa, sg, sy, xx].
+
+
+name_aliases_types() ->
+    [correction, control, alternate, figment, abbreviation].
 
 
 group(Vs) ->

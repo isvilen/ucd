@@ -59,13 +59,14 @@ add(Name, [Arg1, Arg2], Ctx) when Name == prop_list
                                 ; Name == line_break
                                 ; Name == grapheme_break_property
                                 ; Name == sentence_break_property
-                                ; Name == word_break_property ->
-    case validate_fun_arg(Name, Arg2) of
-        {ok, V} ->
+                                ; Name == word_break_property
+                                ; Name == combining_class ->
+    try validate_fun_arg(Name, Arg2) of
+        V ->
             Fun = fun_name(Name, V),
-            {ok, ?Q("'@Fun@'(_@Arg1)"), sets:add_element({Name, V}, Ctx)};
-        Error ->
-            Error
+            {ok, ?Q("'@Fun@'(_@Arg1)"), sets:add_element({Name, V}, Ctx)}
+    catch
+        throw:Error -> {error, Error}
     end;
 
 add(Fun, _Args, _Ctx) ->
@@ -145,7 +146,10 @@ validate_fun_arg(word_break_property, Arg) ->
     validate_atom_list_arg(Arg, word_break_classes());
 
 validate_fun_arg(sentence_break_property, Arg) ->
-    validate_atom_list_arg(Arg, sentence_break_classes()).
+    validate_atom_list_arg(Arg, sentence_break_classes());
+
+validate_fun_arg(combining_class, Arg) ->
+    validate_integer_list_arg(Arg, {0, 255}).
 
 
 codepoint_data_fun(Name, Data, ASTFun) ->
@@ -168,7 +172,8 @@ static_data_fun(Name, Data) ->
 specialized_data_fun(Name, Arg, Data) ->
     Fun = fun_name(Name, Arg),
     {Values, Data1} = data_values(Name, Arg, Data),
-    AST = map_and_binary_index_ast(?Q("CP"), Values, ?Q("false")),
+    Default = data_default_ast(?Q("CP"), {Name, Arg}),
+    AST = map_and_binary_index_ast(?Q("CP"), Values, Default),
     {?Q(["'@Fun@'(CP) when CP >= 0, CP =< 16#10ffff ->"
         ,"  _@AST;"
         ,"'@Fun@'(_) -> error(badarg)."])
@@ -580,6 +585,7 @@ data_default(word_break_property) -> other;
 data_default(sentence_break_property) -> other;
 data_default(block) -> <<"No_Block">>;
 data_default(prop_list) -> [];
+data_default({_, _}) -> false;
 data_default(_) -> undefined.
 
 
@@ -746,41 +752,44 @@ fun_name_suffix(single_quote)                       -> "sq";
 fun_name_suffix(spacing_mark)                       -> "sm";
 fun_name_suffix(upper)                              -> "up";
 
-fun_name_suffix(V)                                  -> atom_to_list(V).
+fun_name_suffix(V) when is_atom(V)                  -> atom_to_list(V);
+fun_name_suffix(V) when is_integer(V)               -> integer_to_list(V).
 
 
 validate_atom_list_arg(Arg, AllowedValues) ->
+    validate_list_arg(Arg, fun (V) -> validate_atom_arg(V, AllowedValues) end).
+
+validate_integer_list_arg(Arg, MinMax) ->
+    validate_list_arg(Arg, fun (V) -> validate_integer_arg(V, MinMax) end).
+
+
+validate_list_arg(Arg, Fun) ->
     try erl_syntax:concrete(Arg) of
-        V  when is_atom(V) ->
-            validate_atom_list_arg_1([V], AllowedValues);
-        Vs when is_list(Vs) ->
-            case lists:all(fun erlang:is_atom/1, Vs) of
-                true  -> validate_atom_list_arg_1(Vs, AllowedValues);
-                false -> {error, "list of atoms expected as function argument"}
-            end;
-        _ ->
-            {error, "atom or list of atoms expected as function argument"}
+        Vs when is_list(Vs) -> lists:sort([Fun(V) || V <- Vs]);
+        V                   -> [Fun(V)]
     catch
-        error:badarg -> {error, "invalid function argument"}
+        error:badarg -> throw("invalid function argument")
     end.
 
 
-validate_atom_list_arg_1(Vs, AllowedValues) ->
-    case validate_atom_list_arg_2(Vs, AllowedValues) of
-        ok    -> {ok, lists:sort(Vs)};
-        Error -> Error
-    end.
-
-validate_atom_list_arg_2([], _) ->
-    ok;
-
-validate_atom_list_arg_2([V|Vs], AllowedValues) ->
+validate_atom_arg(V, AllowedValues) when is_atom(V) ->
     case lists:member(V, AllowedValues) of
-        true ->
-            validate_atom_list_arg_2(Vs, AllowedValues);
-        false ->
-            {error, io_lib:format("invalid function argument: ~s", [V])}
-    end.
+        true  -> V;
+        false -> throw(io_lib:format("invalid function argument: ~s", [V]))
+    end;
+
+validate_atom_arg(_, _) ->
+    throw("invalid function argument").
+
+
+validate_integer_arg(V, {Min, Max}) when is_integer(V) ->
+    if
+        V >= Min, V =< Max -> V;
+        true -> throw(io_lib:format("invalid function argument: ~p", [V]))
+    end;
+
+validate_integer_arg(_, _) ->
+    throw("invalid function argument").
 
 
 prop_list_properties() ->

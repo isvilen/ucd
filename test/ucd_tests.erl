@@ -17,6 +17,11 @@ invalid_fun_test_() ->
                   compile(["-module(x)."
                           ,"f(CP) -> ucd:category(CP, xx)."
                           ]))
+
+  , ?_assertMatch({error, [{_, "invalid function argument: 1000"}]},
+                  compile(["-module(x)."
+                          ,"f(CP) -> ucd:combining_class(CP, 1000)."
+                          ]))
   ].
 
 
@@ -243,6 +248,7 @@ specialized_funs_test_() ->
                   ,"gbk(CP) -> ucd:grapheme_break_property(CP, spacing_mark)."
                   ,"mwb(CP) -> ucd:word_break_property(CP,[mid_letter, mid_num_let, mid_num])."
                   ,"scb(CP) -> ucd:sentence_break_property(CP, close)."
+                  ,"cc(CP) -> ucd:combining_class(CP, 240)."
                   ])
           end,
           fun code:purge/1,
@@ -269,6 +275,9 @@ specialized_funs_test_() ->
 
   , ?_assertEqual(true, ucd_special:scb($'))
   , ?_assertEqual(false, ucd_special:scb($A))
+
+  , ?_assertEqual(true, ucd_special:cc(16#345))
+  , ?_assertEqual(false, ucd_special:cc($A))
   ]}.
 
 

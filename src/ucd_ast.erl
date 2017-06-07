@@ -70,6 +70,10 @@ add(Name, [Arg1, Arg2], Ctx) when Name == prop_list
         throw:Error -> {error, Error}
     end;
 
+add(Name, [Arg1, Arg2], Ctx) when Name == composition ->
+    Fun = fun_name(Name),
+    {ok, ?Q("'@Fun@'(_@Arg1, _@Arg2)"), sets:add_element(Name, Ctx)};
+
 add(Fun, _Args, _Ctx) ->
     {error, io_lib:format("invalid UCD function: ~s", [Fun])}.
 
@@ -124,6 +128,9 @@ form(Name, Data) when Name == blocks
                     ; Name == named_sequences ->
     static_data_fun(Name, Data);
 
+form(Name, Data) when Name == composition ->
+    codepoint2_data_fun(Name, Data, fun map_ast/3);
+
 form({Name, Arg}, Data) ->
     specialized_data_fun(Name, Arg, Data).
 
@@ -173,6 +180,17 @@ codepoint_data_fun(Name, Data, ASTFun) ->
         ,"'@Fun@'(_) -> error(badarg)."])
     ,Data1}.
 
+codepoint2_data_fun(Name, Data, ASTFun) ->
+    Fun = fun_name(Name),
+    {Values, Data1} = data_values(Name, Data),
+    Default = data_default_ast(?Q("{CP1, CP2}"), Name),
+    AST = ASTFun(?Q("{CP1, CP2}"), Values, Default),
+    {?Q(["'@Fun@'(CP1, CP2) when CP1 >= 0, CP1 =< 16#10ffff"
+        ,"                     ; CP2 >= 0, CP2 =<  16#10ffff ->"
+        ,"  _@AST;"
+        ,"'@Fun@'(_, _) -> error(badarg)."])
+    ,Data1}.
+
 
 static_data_fun(Name, Data) ->
     Fun = fun_name(Name),
@@ -220,6 +238,9 @@ data_values(east_asian_width, Data) ->
 
 data_values(composition_exclusion, Data) ->
     composition_exclusions_values(Data);
+
+data_values(composition, Data) ->
+    composition_values(Data);
 
 data_values(Kind, Data) when Kind == full_composition_exclusion
                            ; Kind == changes_when_nfkc_casefolded
@@ -386,6 +407,37 @@ east_asian_width_values(Data) ->
 composition_exclusions_values(Data) ->
     {Vs, Data1} = data(composition_exclusions, Data),
     {[{C, true} || #composition_exclusions{codepoint=C} <- Vs], Data1}.
+
+
+composition_values(Data) ->
+    {CPs, Data1} = data(unicode_data, Data),
+    {Excl, Data2} = data(composition_exclusions, Data1),
+    {composition_values(CPs, Excl), Data2}.
+
+composition_values(CPs, Excl) ->
+    NonStarters = lists:foldl(fun composition_non_starter/2, sets:new(), CPs),
+    Exclusions = sets:from_list([CP || #composition_exclusions{codepoint=CP} <- Excl]),
+    lists:foldr(fun (CP, Acc) ->
+                    composition_value(CP, NonStarters, Exclusions, Acc)
+                end, #{}, CPs).
+
+composition_non_starter(#unicode_data{combining_class=0}, Acc) ->
+    Acc;
+composition_non_starter(#unicode_data{code=CP}, Acc) when is_integer(CP) ->
+    sets:add_element(CP, Acc).
+
+composition_value(#unicode_data{code=CP, combining_class=0,decomposition=[CP1,CP2]}
+                 , NonStarters, Exclusions, Acc) ->
+    case sets:is_element(CP1, NonStarters) of
+        true  -> Acc;
+        false -> case sets:is_element(CP, Exclusions) of
+                     true  -> Acc;
+                     false -> maps:put({CP1,CP2}, CP, Acc)
+                 end
+    end;
+
+composition_value(_, _, _, Acc) ->
+    Acc.
 
 
 case_folding_values(Kind, Data) ->
@@ -699,7 +751,10 @@ binary_index_ast_1(VarAST, {L1, [{Code, _}|_]=L2}) ->
 
 
 map_ast(VarAST, Values, Default) ->
-    Data = maps:from_list(Values),
+    Data = if
+               is_list(Values) -> maps:from_list(Values);
+               true            -> Values
+           end,
     ?Q("maps:get(_@VarAST, _@Data@, _@Default)").
 
 

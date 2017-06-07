@@ -251,6 +251,7 @@ specialized_funs_test_() ->
                   ,"cc(CP) -> ucd:combining_class(CP, 240)."
                   ,"ccn(CP)-> ucd:combining_class(CP, not [0, 230])."
                   ,"name_correction(CP)-> ucd:name_aliases(CP, correction)."
+                  ,"composition(CP1,CP2) -> ucd:composition(CP1,CP2)."
                   ])
           end,
           fun code:purge/1,
@@ -287,6 +288,9 @@ specialized_funs_test_() ->
 
   , ?_assertEqual(<<"PRESENTATION FORM FOR VERTICAL RIGHT WHITE LENTICULAR BRACKET">>,
                   ucd_special:name_correction(16#FE18))
+
+  , ?_assertEqual(16#00C0, ucd_special:composition(16#0041, 16#0300))
+  , ?_assertEqual(undefined, ucd_special:composition(16#0915, 16#093C))
   ]}.
 
 

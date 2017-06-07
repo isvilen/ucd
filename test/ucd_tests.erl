@@ -2,12 +2,22 @@
 -include_lib("eunit/include/eunit.hrl").
 
 
-invalid_fun_test() ->
-  ?assertMatch({error, [{_, "invalid UCD function: x"}]},
-               compile(["-module(x)."
-                       ,"f() -> ucd:x()."
-                       ])).
+invalid_fun_test_() ->
+  [ ?_assertMatch({error, [{_, "invalid UCD function: x"}]},
+                  compile(["-module(x)."
+                          ,"f() -> ucd:x()."
+                          ]))
 
+  , ?_assertMatch({error, [{_, "invalid function argument: xx"}]},
+                  compile(["-module(x)."
+                          ,"f(CP) -> ucd:prop_list(CP, [xx])."
+                          ]))
+
+  , ?_assertMatch({error, [{_, "invalid function argument: xx"}]},
+                  compile(["-module(x)."
+                          ,"f(CP) -> ucd:category(CP, xx)."
+                          ]))
+  ].
 
 
 codepoint_data_funs_test_() ->
@@ -219,6 +229,30 @@ name_data_funs_test_() ->
   , ?_assertEqual({cjk_ideograph,{extension,"A"}}, ucd_name:range(16#3400))
   , ?_assertEqual(hangul_syllable, ucd_name:range(16#AC00))
   , ?_assertEqual({high_surrogate, non_private_use}, ucd_name:range(16#D800))
+  ]}.
+
+
+specialized_funs_test_() ->
+  {setup, fun () ->
+             load(["-module(ucd_special)."
+                  ,"hyphen_dash(CP) -> ucd:prop_list(CP, [hyphen, dash])."
+                  ,"other_lowercase(CP) -> ucd:prop_list(CP, other_lowercase)."
+                  ,"is_control(CP) -> ucd:category(CP, 'Cc')."
+                  ,"is_left_to_right(CP) -> ucd:bidi_class(CP, 'L')."
+                  ])
+          end,
+          fun code:purge/1,
+  [ ?_assertEqual(true, ucd_special:hyphen_dash($-))
+  , ?_assertEqual(false, ucd_special:hyphen_dash($=))
+
+  , ?_assertEqual(true, ucd_special:other_lowercase(16#00AA))
+  , ?_assertEqual(false, ucd_special:other_lowercase($A))
+
+  , ?_assertEqual(false, ucd_special:is_control($A))
+  , ?_assertEqual(true, ucd_special:is_control($\n))
+
+  , ?_assertEqual(true, ucd_special:is_left_to_right($A))
+  , ?_assertEqual(false, ucd_special:is_left_to_right(16#05BE))
   ]}.
 
 

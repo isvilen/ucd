@@ -53,6 +53,17 @@ add(Name, [Arg], Ctx) when Name == category
     Fun = fun_name(Name),
     {ok, ?Q("'@Fun@'(_@Arg)"), sets:add_element(Name, Ctx)};
 
+add(Name, [Arg1, Arg2], Ctx) when Name == prop_list
+                                ; Name == category
+                                ; Name == bidi_class ->
+    case validate_fun_arg(Name, Arg2) of
+        {ok, V} ->
+            Fun = fun_name(Name, V),
+            {ok, ?Q("'@Fun@'(_@Arg1)"), sets:add_element({Name, V}, Ctx)};
+        Error ->
+            Error
+    end;
+
 add(Fun, _Args, _Ctx) ->
     {error, io_lib:format("invalid UCD function: ~s", [Fun])}.
 
@@ -105,7 +116,20 @@ form(Name, Data) when Name == block
 form(Name, Data) when Name == blocks
                     ; Name == ranges
                     ; Name == named_sequences ->
-    static_data_fun(Name, Data).
+    static_data_fun(Name, Data);
+
+form({Name, Arg}, Data) ->
+    specialized_data_fun(Name, Arg, Data).
+
+
+validate_fun_arg(prop_list, Arg) ->
+    validate_atom_list_arg(Arg, prop_list_properties());
+
+validate_fun_arg(category, Arg) ->
+    validate_atom_list_arg(Arg, unicode_data_categories());
+
+validate_fun_arg(bidi_class, Arg) ->
+    validate_atom_list_arg(Arg, unicode_data_bidi_classes()).
 
 
 codepoint_data_fun(Name, Data, ASTFun) ->
@@ -123,6 +147,16 @@ static_data_fun(Name, Data) ->
     Fun = fun_name(Name),
     {Values, Data1} = data_values(Name, Data),
     {?Q("'@Fun@'() -> _@Values@.") ,Data1}.
+
+
+specialized_data_fun(Name, Arg, Data) ->
+    Fun = fun_name(Name, Arg),
+    {Values, Data1} = data_values(Name, Arg, Data),
+    AST = map_and_binary_index_ast(?Q("CP"), Values, ?Q("false")),
+    {?Q(["'@Fun@'(CP) when CP >= 0, CP =< 16#10ffff ->"
+        ,"  _@AST;"
+        ,"'@Fun@'(_) -> error(badarg)."])
+    ,Data1}.
 
 
 data_values(numeric, Data) ->
@@ -207,14 +241,25 @@ data_values(Kind, Data) ->
     unicode_data_values(Kind, Data).
 
 
+data_values(prop_list, Props, Data) ->
+    {Vs, Data1} = prop_list_values(Data),
+    {[{C, true} || {C, Ps} <- Vs, (Props -- Ps) == []], Data1};
+
+data_values(Kind, Requested, Data) ->
+    {Vs, Data1} = unicode_data_values(Kind, Data, undefined),
+    {codepoint_true_values(Vs, Requested), Data1}.
+
+
 unicode_data_values(Kind, Data) ->
+    unicode_data_values(Kind, Data, data_default(Kind)).
+
+unicode_data_values(Kind, Data, Skip) ->
     {CPs, Data1} = data(unicode_data, Data),
-    Default = data_default(Kind),
     Vs = lists:filtermap(fun (#unicode_data{code=Code}=UD) ->
                                  case unicode_data_value(Kind, UD) of
-                                     undefined           -> false;
-                                     V when V == Default -> false;
-                                     V                   -> {true, {Code, V}}
+                                     undefined        -> false;
+                                     V when V == Skip -> false;
+                                     V                -> {true, {Code, V}}
                                  end
                          end, CPs),
     {Vs, Data1}.
@@ -465,6 +510,26 @@ prop_list_add_value(CP, V, Acc) ->
     maps:update_with(CP, fun (Vs) -> [V | Vs] end, [V] , Acc).
 
 
+codepoint_true_values(Vs, Filter) ->
+    Vs1 = lists:foldl(fun(V, Acc) -> codepoint_true_value(V, Filter, Acc) end,
+                      #{}, Vs),
+    lists:keysort(1, maps:to_list(Vs1)).
+
+codepoint_true_value({C, V}, Filter, Acc) ->
+    case lists:member(V, Filter) of
+        false ->
+            Acc;
+        true ->
+            case C of
+                {F, T} ->
+                    lists:foldl(fun (CP, Acc0) -> Acc0#{CP => true} end,
+                                Acc, lists:seq(F,T));
+                CP ->
+                    Acc#{CP => true}
+            end
+    end.
+
+
 data_default(category) -> 'Cn';
 data_default(combining_class) -> 0;
 data_default(bidi_class) -> 'L';
@@ -558,21 +623,123 @@ map_ast(VarAST, Values, Default) ->
 
 map_and_binary_index_ast(VarAST, Values, Default) ->
     Vs = group(Values),
-    {CPVs,RGVs} = lists:partition(fun ({C, _}) -> is_integer(C) end, Vs),
-    MapAST = map_ast(VarAST, CPVs, ?Q("undefined")),
-    IdxAST = binary_index_ast(VarAST, RGVs),
-    ?Q(["case _@MapAST of"
-       ,"  undefined ->"
-       ,"    case _@IdxAST of"
-       ,"      undefined -> _@Default;"
-       ,"      V -> V"
-       ,"    end;"
-       ,"  V -> V"
-       ,"end"]).
+    case lists:partition(fun ({C, _}) -> is_integer(C) end, Vs) of
+        {CPVs, []} ->
+            map_ast(VarAST, CPVs, Default);
+        {[], RGVs} ->
+            binary_index_ast(VarAST, RGVs, Default);
+        {CPVs,RGVs} ->
+            MapAST = map_ast(VarAST, CPVs, ?Q("undefined")),
+            IdxAST = binary_index_ast(VarAST, RGVs, Default),
+            ?Q(["case _@MapAST of"
+               ,"  undefined ->"
+               ,"    _@IdxAST;"
+               ,"  V -> V"
+               ,"end"])
+    end.
 
 
 fun_name(BaseName) ->
-    list_to_atom(lists:flatten(["$ucd_", atom_to_list(BaseName), "$"])).
+    fun_name_1(BaseName, "").
+
+fun_name(BaseName, Vs) ->
+    fun_name_1(BaseName, ["_" | [[fun_name_suffix(V), $_] || V <- Vs]]).
+
+fun_name_1(BaseName, Suffix) ->
+    list_to_atom(lists:flatten(["$ucd_", atom_to_list(BaseName), Suffix, "$"])).
+
+
+fun_name_suffix(ascii_hex_digit)                    -> "ahd";
+fun_name_suffix(bidi_control)                       -> "bc";
+fun_name_suffix(dash)                               -> "da";
+fun_name_suffix(deprecated)                         -> "de";
+fun_name_suffix(diacritic)                          -> "di";
+fun_name_suffix(extender)                           -> "ex";
+fun_name_suffix(hex_digit)                          -> "hd";
+fun_name_suffix(hyphen)                             -> "hy";
+fun_name_suffix(ideographic)                        -> "id";
+fun_name_suffix(ids_binary_operator)                -> "ibo";
+fun_name_suffix(ids_trinary_operator)               -> "ito";
+fun_name_suffix(join_control)                       -> "jc";
+fun_name_suffix(logical_order_exception)            -> "loe";
+fun_name_suffix(noncharacter_code_point)            -> "ncp";
+fun_name_suffix(other_alphabetic)                   -> "oa";
+fun_name_suffix(other_default_ignorable_code_point) -> "odicp";
+fun_name_suffix(other_grapheme_extend)              -> "oge";
+fun_name_suffix(other_id_start)                     -> "ois";
+fun_name_suffix(other_id_continue)                  -> "oic";
+fun_name_suffix(other_lowercase)                    -> "ol";
+fun_name_suffix(other_math)                         -> "om";
+fun_name_suffix(other_uppercase)                    -> "ou";
+fun_name_suffix(pattern_syntax)                     -> "ps";
+fun_name_suffix(pattern_white_space)                -> "pws";
+fun_name_suffix(prepended_concatenation_mark)       -> "pcm";
+fun_name_suffix(quotation_mark)                     -> "qm";
+fun_name_suffix(radical)                            -> "ra";
+fun_name_suffix(sentence_terminal)                  -> "se";
+fun_name_suffix(soft_dotted)                        -> "sd";
+fun_name_suffix(terminal_punctuation)               -> "tp";
+fun_name_suffix(unified_ideograph)                  -> "ui";
+fun_name_suffix(variation_selector)                 -> "vs";
+fun_name_suffix(white_space)                        -> "ws";
+fun_name_suffix(V)                                  -> atom_to_list(V).
+
+
+validate_atom_list_arg(Arg, AllowedValues) ->
+    try erl_syntax:concrete(Arg) of
+        V  when is_atom(V) ->
+            validate_atom_list_arg_1([V], AllowedValues);
+        Vs when is_list(Vs) ->
+            case lists:all(fun erlang:is_atom/1, Vs) of
+                true  -> validate_atom_list_arg_1(Vs, AllowedValues);
+                false -> {error, "list of atoms expected as function argument"}
+            end;
+        _ ->
+            {error, "atom or list of atoms expected as function argument"}
+    catch
+        error:badarg -> {error, "invalid function argument"}
+    end.
+
+
+validate_atom_list_arg_1(Vs, AllowedValues) ->
+    case validate_atom_list_arg_2(Vs, AllowedValues) of
+        ok    -> {ok, lists:sort(Vs)};
+        Error -> Error
+    end.
+
+validate_atom_list_arg_2([], _) ->
+    ok;
+
+validate_atom_list_arg_2([V|Vs], AllowedValues) ->
+    case lists:member(V, AllowedValues) of
+        true ->
+            validate_atom_list_arg_2(Vs, AllowedValues);
+        false ->
+            {error, io_lib:format("invalid function argument: ~s", [V])}
+    end.
+
+
+prop_list_properties() ->
+    [ white_space, bidi_control, join_control, dash, hyphen, quotation_mark
+    , terminal_punctuation, other_math, hex_digit, ascii_hex_digit
+    , other_alphabetic, ideographic, diacritic, extender, other_lowercase
+    , other_uppercase, noncharacter_code_point, other_grapheme_extend
+    , ids_binary_operator, ids_trinary_operator, radical, unified_ideograph
+    , deprecated, soft_dotted, logical_order_exception, other_id_start
+    , other_id_continue, sentence_terminal, variation_selector
+    , pattern_white_space, pattern_syntax, prepended_concatenation_mark
+    , other_default_ignorable_code_point ].
+
+
+unicode_data_categories() ->
+    ['Lu', 'Ll', 'Lt', 'Lm', 'Lo', 'Mn', 'Mc', 'Me', 'Nd', 'Nl', 'No', 'Pc', 'Pd'
+    ,'Ps', 'Pe', 'Pi', 'Pf', 'Po', 'Sm', 'Sc', 'Sk', 'So', 'Zs', 'Zl', 'Zp', 'Cc'
+    ,'Cf', 'Cs', 'Co', 'Cn'].
+
+
+unicode_data_bidi_classes() ->
+    ['L', 'R', 'AL', 'EN', 'ES', 'ET', 'AN', 'CS', 'NSM', 'BN', 'B', 'S', 'WS'
+    ,'ON', 'LRE', 'LRO', 'RLE', 'RLO', 'PDF', 'LRI', 'RLI', 'FSI', 'PDI'].
 
 
 group(Vs) ->

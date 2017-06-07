@@ -239,6 +239,10 @@ specialized_funs_test_() ->
                   ,"other_lowercase(CP) -> ucd:prop_list(CP, other_lowercase)."
                   ,"is_control(CP) -> ucd:category(CP, 'Cc')."
                   ,"is_left_to_right(CP) -> ucd:bidi_class(CP, 'L')."
+                  ,"lbk(CP) -> ucd:line_break(CP, bk)."
+                  ,"gbk(CP) -> ucd:grapheme_break_property(CP, spacing_mark)."
+                  ,"mwb(CP) -> ucd:word_break_property(CP,[mid_letter, mid_num_let, mid_num])."
+                  ,"scb(CP) -> ucd:sentence_break_property(CP, close)."
                   ])
           end,
           fun code:purge/1,
@@ -253,6 +257,18 @@ specialized_funs_test_() ->
 
   , ?_assertEqual(true, ucd_special:is_left_to_right($A))
   , ?_assertEqual(false, ucd_special:is_left_to_right(16#05BE))
+
+  , ?_assertEqual(true, ucd_special:lbk(16#000B))
+  , ?_assertEqual(false, ucd_special:lbk($\s))
+
+  , ?_assertEqual(true, ucd_special:gbk(16#903))
+  , ?_assertEqual(false, ucd_special:gbk($A))
+
+  , ?_assertEqual(true, ucd_special:mwb($:))
+  , ?_assertEqual(false, ucd_special:mwb($A))
+
+  , ?_assertEqual(true, ucd_special:scb($'))
+  , ?_assertEqual(false, ucd_special:scb($A))
   ]}.
 
 

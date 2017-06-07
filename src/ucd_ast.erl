@@ -55,7 +55,11 @@ add(Name, [Arg], Ctx) when Name == category
 
 add(Name, [Arg1, Arg2], Ctx) when Name == prop_list
                                 ; Name == category
-                                ; Name == bidi_class ->
+                                ; Name == bidi_class
+                                ; Name == line_break
+                                ; Name == grapheme_break_property
+                                ; Name == sentence_break_property
+                                ; Name == word_break_property ->
     case validate_fun_arg(Name, Arg2) of
         {ok, V} ->
             Fun = fun_name(Name, V),
@@ -129,7 +133,19 @@ validate_fun_arg(category, Arg) ->
     validate_atom_list_arg(Arg, unicode_data_categories());
 
 validate_fun_arg(bidi_class, Arg) ->
-    validate_atom_list_arg(Arg, unicode_data_bidi_classes()).
+    validate_atom_list_arg(Arg, unicode_data_bidi_classes());
+
+validate_fun_arg(line_break, Arg) ->
+    validate_atom_list_arg(Arg, line_break_classes());
+
+validate_fun_arg(grapheme_break_property, Arg) ->
+    validate_atom_list_arg(Arg, grapheme_break_classes());
+
+validate_fun_arg(word_break_property, Arg) ->
+    validate_atom_list_arg(Arg, word_break_classes());
+
+validate_fun_arg(sentence_break_property, Arg) ->
+    validate_atom_list_arg(Arg, sentence_break_classes()).
 
 
 codepoint_data_fun(Name, Data, ASTFun) ->
@@ -244,6 +260,22 @@ data_values(Kind, Data) ->
 data_values(prop_list, Props, Data) ->
     {Vs, Data1} = prop_list_values(Data),
     {[{C, true} || {C, Ps} <- Vs, (Props -- Ps) == []], Data1};
+
+data_values(line_break, Classes, Data) ->
+    {Vs, Data1} = line_break_values(Data),
+    {codepoint_true_values(Vs, Classes), Data1};
+
+data_values(grapheme_break_property, Classes, Data) ->
+    {Vs, Data1} = grapheme_break_property_values(Data),
+    {codepoint_true_values(Vs, Classes), Data1};
+
+data_values(sentence_break_property, Classes, Data) ->
+    {Vs, Data1} = sentence_break_property_values(Data),
+    {codepoint_true_values(Vs, Classes), Data1};
+
+data_values(word_break_property, Classes, Data) ->
+    {Vs, Data1} = word_break_property_values(Data),
+    {codepoint_true_values(Vs, Classes), Data1};
 
 data_values(Kind, Requested, Data) ->
     {Vs, Data1} = unicode_data_values(Kind, Data, undefined),
@@ -649,6 +681,7 @@ fun_name_1(BaseName, Suffix) ->
     list_to_atom(lists:flatten(["$ucd_", atom_to_list(BaseName), Suffix, "$"])).
 
 
+% prop_list
 fun_name_suffix(ascii_hex_digit)                    -> "ahd";
 fun_name_suffix(bidi_control)                       -> "bc";
 fun_name_suffix(dash)                               -> "da";
@@ -682,6 +715,37 @@ fun_name_suffix(terminal_punctuation)               -> "tp";
 fun_name_suffix(unified_ideograph)                  -> "ui";
 fun_name_suffix(variation_selector)                 -> "vs";
 fun_name_suffix(white_space)                        -> "ws";
+
+% line, grapheme, word, sentence breaks
+fun_name_suffix(a_letter)                           -> "al";
+fun_name_suffix(a_term)                             -> "at";
+fun_name_suffix(close)                              -> "cl";
+fun_name_suffix(control)                            -> "co";
+fun_name_suffix(double_quote)                       -> "dq";
+fun_name_suffix(e_base)                             -> "eb";
+fun_name_suffix(e_base_gaz)                         -> "ebg";
+fun_name_suffix(e_modifier)                         -> "em";
+fun_name_suffix(extend)                             -> "ex";
+fun_name_suffix(extend_num_let)                     -> "enl";
+fun_name_suffix(format)                             -> "fo";
+fun_name_suffix(glue_after_zwj)                     -> "gaz";
+fun_name_suffix(hebrew_letter)                      -> "hl";
+fun_name_suffix(katakana)                           -> "ka";
+fun_name_suffix(lower)                              -> "lo";
+fun_name_suffix(mid_letter)                         -> "ml";
+fun_name_suffix(mid_num)                            -> "mn";
+fun_name_suffix(mid_num_let)                        -> "mnl";
+fun_name_suffix(newline)                            -> "nl";
+fun_name_suffix(numeric)                            -> "nu";
+fun_name_suffix(o_letter)                           -> "ol";
+fun_name_suffix(prepend)                            -> "pr";
+fun_name_suffix(regional_indicator)                 -> "ri";
+fun_name_suffix(s_continue)                         -> "sc";
+fun_name_suffix(s_term)                             -> "st";
+fun_name_suffix(single_quote)                       -> "sq";
+fun_name_suffix(spacing_mark)                       -> "sm";
+fun_name_suffix(upper)                              -> "up";
+
 fun_name_suffix(V)                                  -> atom_to_list(V).
 
 
@@ -740,6 +804,29 @@ unicode_data_categories() ->
 unicode_data_bidi_classes() ->
     ['L', 'R', 'AL', 'EN', 'ES', 'ET', 'AN', 'CS', 'NSM', 'BN', 'B', 'S', 'WS'
     ,'ON', 'LRE', 'LRO', 'RLE', 'RLO', 'PDF', 'LRI', 'RLI', 'FSI', 'PDI'].
+
+
+grapheme_break_classes() ->
+    [cr, lf, control, extend, zwj, regional_indicator, prepend, spacing_mark
+    ,l, v, t , lv, lvt, e_base, e_modifier, glue_after_zwj, e_base_gaz].
+
+
+word_break_classes() ->
+    [cr, lf, newline, extend, zwj, regional_indicator, format, katakana
+    ,hebrew_letter, a_letter, single_quote, double_quote, mid_num_let
+    ,mid_letter,mid_num, numeric, extend_num_let, e_base, e_modifier
+    ,glue_after_zwj, e_base_gaz].
+
+
+sentence_break_classes() ->
+    [cr, lf, extend, sep, format, sp, lower, upper, o_letter, numeric, a_term
+    ,s_continue, s_term, close].
+
+
+line_break_classes() ->
+    [bk, cm, cr, gl, lf, nl, sg, sp, wj, zw, zwj, ai, al, b2, ba, bb, cb, cj, cl
+    ,cp, eb, em, ex, h2, h3, hl, hy, id, in, is, jl, jt, jv, ns, nu, op, po, pr
+    ,qu, ri, sa, sg, sy, xx].
 
 
 group(Vs) ->

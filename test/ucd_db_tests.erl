@@ -1,5 +1,5 @@
 -module(ucd_db_tests).
--include_lib("ucd/src/ucd_db.hrl").
+-include_lib("ucd/include/ucd_db.hrl").
 -include_lib("eunit/include/eunit.hrl").
 
 

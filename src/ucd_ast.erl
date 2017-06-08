@@ -1,5 +1,5 @@
 -module(ucd_ast).
--export([context/0, add/3, forms/1]).
+-export([context/0, add/3, forms/1, normalize_name/1]).
 
 -include_lib("syntax_tools/include/merl.hrl").
 
@@ -74,6 +74,11 @@ add(Name, [Arg1, Arg2], Ctx) when Name == composition ->
     Fun = fun_name(Name),
     {ok, ?Q("'@Fun@'(_@Arg1, _@Arg2)"), sets:add_element(Name, Ctx)};
 
+add(Name, [Arg], Ctx) when Name == normalize_name ->
+    Fun = fun_name(Name),
+    Ctx1 = sets:add_element(normalize_name_1, Ctx),
+    {ok, ?Q("'@Fun@'(_@Arg)"), sets:add_element(Name, Ctx1)};
+
 add(Fun, _Args, _Ctx) ->
     {error, io_lib:format("invalid UCD function: ~s", [Fun])}.
 
@@ -132,8 +137,48 @@ form(Name, Data) when Name == blocks
 form(Name, Data) when Name == composition ->
     codepoint2_data_fun(Name, Data, fun map_ast/3);
 
+form(normalize_name, Data) ->
+    Fun = fun_name(normalize_name),
+    Fun1 = fun_name(normalize_name_1),
+    AST = ?Q(["'@Fun@'(Name) when is_binary(Name) ->"
+             ,"   N1 = string:lowercase(Name),"
+             ,"   N2 = string:lexemes(N1, \" \"),"
+             ,"   N3 = ['@Fun1@'(N) || N <- N2],"
+             ,"   iolist_to_binary(N3);"
+             ,"'@Fun@'(_) -> error(badarg)."
+             ]),
+    {AST, Data};
+
+form(normalize_name_1, Data) ->
+    Fun = fun_name(normalize_name_1),
+    AST = ?Q(["'@Fun@'(<<\"o-e\">>) -> <<\"o-e\">>;"
+             ,"'@Fun@'(<<\"g-o-e\">>) -> <<\"go-e\">>;"
+             ,"'@Fun@'(<<A,$-,B,Rest/binary>>)"
+             ,"  when A >= $a, A =< $z, B >= $a, B =< $z ->"
+             ,"  [A | '@Fun@'(<<B,Rest/binary>>)];"
+             ,"'@Fun@'(<<H,T/binary>>) -> [H | '@Fun@'(T)];"
+             ,"'@Fun@'(<<>>)           -> []."
+             ]),
+    {AST, Data};
+
 form({Name, Arg}, Data) ->
     specialized_data_fun(Name, Arg, Data).
+
+
+normalize_name(Name) when is_binary(Name) ->
+    N1 = string:lowercase(Name),
+    N2 = string:lexemes(N1, " "),
+    N3 = [normalize_name_1(N) || N <- N2],
+    iolist_to_binary(N3).
+
+% special case for U+1180 HANGUL JUNGSEONG O-E
+normalize_name_1(<<"o-e">>) -> <<"o-e">>;
+normalize_name_1(<<"g-o-e">>) -> <<"go-e">>;
+normalize_name_1(<<A,$-,B,Rest/binary>>) when A >= $a, A =< $z,
+                                              B >= $a, B =< $z ->
+    [A | normalize_name_1(<<B,Rest/binary>>)];
+normalize_name_1(<<H,T/binary>>) -> [H | normalize_name_1(T)];
+normalize_name_1(<<>>)           -> [].
 
 
 validate_fun_arg(Name, Arg) when Name == prop_list

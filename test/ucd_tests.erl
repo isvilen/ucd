@@ -253,6 +253,7 @@ specialized_funs_test_() ->
                   ,"name_correction(CP)-> ucd:name_aliases(CP, correction)."
                   ,"composition(CP1,CP2) -> ucd:composition(CP1,CP2)."
                   ,"bracket(CP) -> ucd:bidi_bracket(CP)."
+                  ,"normalize_name(Name) -> ucd:normalize_name(Name)."
                   ])
           end,
           fun code:purge/1,
@@ -294,6 +295,11 @@ specialized_funs_test_() ->
   , ?_assertEqual(undefined, ucd_special:composition(16#0915, 16#093C))
 
   , ?_assertEqual({open, [$}]}, ucd_special:bracket(${))
+
+  , ?_assertEqual(<<"nobreakspace">>,
+                  ucd_special:normalize_name(<<"NO-BREAK SPACE">>))
+  , ?_assertEqual(<<"hanguljungseongo-e">>,
+                  ucd_special:normalize_name(<<"HANGUL JUNGSEONG O-E">>))
   ]}.
 
 

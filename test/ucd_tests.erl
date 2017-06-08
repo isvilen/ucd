@@ -222,6 +222,7 @@ name_data_funs_test_() ->
                   ,"range(CP) -> ucd:range(CP)."
                   ,"ranges() -> ucd:ranges()."
                   ,"lookup_name(Name) -> ucd:lookup_name(Name)."
+                  ,"lookup_cc_alias(Name) -> ucd:lookup_aliases(Name, control)."
                   ])
           end,
           fun code:purge/1,
@@ -242,6 +243,9 @@ name_data_funs_test_() ->
                   ucd_name:lookup_name(<<"LATIN CAPITAL LETTER H WITH HOOK">>))
   , ?_assertEqual(16#32D9,
                   ucd_name:lookup_name(<<"CIRCLED KATAKANA KO">>))
+
+  , ?_assertEqual(16#0008, ucd_name:lookup_cc_alias(<<"BACKSPACE">>))
+  , ?_assertEqual(undefined, ucd_name:lookup_cc_alias(<<"???">>))
   ]}.
 
 

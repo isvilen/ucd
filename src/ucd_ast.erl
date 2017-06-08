@@ -86,6 +86,18 @@ add(Name, [Arg], Ctx) when Name == lookup_name ->
     Ctx3 = sets:add_element(normalize_name_1, Ctx2),
     {ok, ?Q("'@Fun@'(_@Arg)"), sets:add_element(Name, Ctx3)};
 
+add(Name, [Arg1, Arg2], Ctx) when Name == lookup_aliases ->
+    try validate_fun_arg(Name, Arg2) of
+        V ->
+            Fun = fun_name(Name, V),
+            Ctx1 = sets:add_element(lookup_codepoint, Ctx),
+            Ctx2 = sets:add_element(normalize_name, Ctx1),
+            Ctx3 = sets:add_element(normalize_name_1, Ctx2),
+            {ok, ?Q("'@Fun@'(_@Arg1)"), sets:add_element({Name, V}, Ctx3)}
+    catch
+        throw:Error -> {error, Error}
+    end;
+
 add(Fun, _Args, _Ctx) ->
     {error, io_lib:format("invalid UCD function: ~s", [Fun])}.
 
@@ -146,6 +158,9 @@ form(Name, Data) when Name == composition ->
 
 form(Name, Data) when Name == lookup_name ->
     codepoint_lookup_fun(Name, Data);
+
+form({Name, V}, Data) when Name == lookup_aliases ->
+    codepoint_lookup_fun(Name, V, Data);
 
 form(lookup_codepoint, Data) ->
     Fun = fun_name(lookup_codepoint),
@@ -210,7 +225,8 @@ validate_fun_arg(Name, Arg) when Name == prop_list
                                ; Name == grapheme_break_property
                                ; Name == word_break_property
                                ; Name == sentence_break_property
-                               ; Name == name_aliases ->
+                               ; Name == name_aliases
+                               ; Name == lookup_aliases ->
     validate_fun_arg(Name, Arg, fun validate_atom_list_arg/2);
 
 validate_fun_arg(Name, Arg) when Name == combining_class ->
@@ -218,11 +234,15 @@ validate_fun_arg(Name, Arg) when Name == combining_class ->
 
 
 validate_fun_arg(Name, Arg, Fun) ->
-    AllowedValues = ucd_data:allowed_values(Name),
+    AllowedValues = allowed_values(Name),
     case Arg of
         ?Q("not _@Arg1") -> {'not', Fun(Arg1, AllowedValues)};
         _                -> Fun(Arg, AllowedValues)
     end.
+
+
+allowed_values(lookup_aliases) -> allowed_values(name_aliases);
+allowed_values(Name)           -> ucd_data:allowed_values(Name).
 
 
 codepoint_data_fun(Name, Data, ASTFun) ->
@@ -248,30 +268,36 @@ codepoint2_data_fun(Name, Data, ASTFun) ->
 
 
 codepoint_lookup_fun(Name, Data) ->
-    Fun = fun_name(Name),
+    {Vs, Data1} = lookup_values(Name, Data),
+    {codepoint_lookup_fun_1(fun_name(Name), Vs), Data1}.
+
+codepoint_lookup_fun(Name, Filter, Data) ->
+    {Vs, Data1} = lookup_values(Name, Filter, Data),
+    {codepoint_lookup_fun_1(fun_name(Name, Filter), Vs), Data1}.
+
+codepoint_lookup_fun_1(Fun, Data) ->
     NormNameFun = fun_name(normalize_name),
     LookupFun = fun_name(lookup_codepoint),
-    AST = case lookup_values(Name, Data) of
-              {{LookupData, Size, []}, Data1} ->
-                  ?Q(["'@Fun@'(Name) ->"
-                     ,"  N1 = '@NormNameFun@'(Name),"
-                     ,"  Hash = erlang:phash2(N1),"
-                     ,"  '@LookupFun@'(Hash, 0, _@Size@, _@LookupData@)."]);
-              {{LookupData, Size, Collisions}, Data1} ->
-                  ?Q(["'@Fun@'(Name) ->"
-                     ,"  N1 = '@NormNameFun@'(Name),"
-                     ,"  Hash = erlang:phash2(N1),"
-                     ,"  case lists:keyfind(Hash, 1, _@Collisions@) of"
-                     ,"    false ->"
-                     ,"      '@LookupFun@'(Hash, 0, _@Size@, _@LookupData@);"
-                     ,"    {_, Collisions} ->"
-                     ,"      case lists:keyfind(N1, 2, Collisions) of"
-                     ,"        false   -> undefined;"
-                     ,"        {CP, _} -> CP"
-                     ,"      end"
-                     ,"  end."])
-          end,
-    {AST, Data1}.
+    case Data of
+        {LookupData, Size, []} ->
+            ?Q(["'@Fun@'(Name) ->"
+               ,"  N1 = '@NormNameFun@'(Name),"
+               ,"  Hash = erlang:phash2(N1),"
+               ,"  '@LookupFun@'(Hash, 0, _@Size@, _@LookupData@)."]);
+        {LookupData, Size, Collisions} ->
+            ?Q(["'@Fun@'(Name) ->"
+               ,"  N1 = '@NormNameFun@'(Name),"
+               ,"  Hash = erlang:phash2(N1),"
+               ,"  case lists:keyfind(Hash, 1, _@Collisions@) of"
+               ,"    false ->"
+               ,"      '@LookupFun@'(Hash, 0, _@Size@, _@LookupData@);"
+               ,"    {_, Collisions} ->"
+               ,"      case lists:keyfind(N1, 2, Collisions) of"
+               ,"        false   -> undefined;"
+               ,"        {CP, _} -> CP"
+               ,"      end"
+               ,"  end."])
+    end.
 
 
 static_data_fun(Name, Data) ->
@@ -351,6 +377,12 @@ lookup_values(lookup_name, Data) ->
     {Vs, Data1} = ucd_data:values(name, Data),
     {lookup_values(Vs), Data1}.
 
+
+lookup_values(lookup_aliases, Filter, Data) ->
+    {Vs, Data1} = ucd_data:values(name_aliases, Filter, Data),
+    {lookup_values(Vs), Data1}.
+
+
 lookup_values(Values) ->
     ValuesMap = lookup_values_fold(Values, #{}),
     {Vs, Collisions} = lookup_values_split(ValuesMap),
@@ -359,14 +391,21 @@ lookup_values(Values) ->
     {Vs2, length(Vs1), Collisions}.
 
 lookup_values_fold(Data, Acc) ->
-    lists:foldl(fun ({CP, Name}, Acc0) ->
-                        N = normalize_name(Name),
-                        V = {CP, N},
-                        maps:update_with(erlang:phash2(N),
-                                         fun (V0) when is_list(V0) -> [V | V0];
-                                             (V0)                  -> [V , V0]
-                                         end, V , Acc0)
+    lists:foldl(fun ({CP, Names}, Acc0) when is_list(Names) ->
+                   lists:foldl(fun (N, Acc1) -> lookup_value(CP, N, Acc1) end,
+                               Acc0, Names);
+                    ({CP, Name}, Acc0) ->
+                        lookup_value(CP, Name, Acc0)
                 end, Acc, Data).
+
+lookup_value(CP, Name, Acc) ->
+    N = normalize_name(Name),
+    V = {CP, N},
+    maps:update_with(erlang:phash2(N),
+                     fun (V0) when is_list(V0) -> [V | V0];
+                         (V0)                  -> [V , V0]
+                     end, V , Acc).
+
 
 lookup_values_split(Values) ->
     maps:fold(fun (K, {CP, _}, {Acc1, Acc2}) -> {[{K,CP} | Acc1], Acc2};

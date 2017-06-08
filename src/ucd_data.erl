@@ -299,8 +299,8 @@ name_aliases_match(#name_alias{type=T}, Types) ->
     lists:member(T, Types).
 
 name_aliases_add(#name_alias{codepoint=CP, name=V}, Acc) ->
-    maps:update_with(CP, fun (V0) when is_list(V0) -> [V | V0];
-                             (V0)                  -> [V , V0]
+    maps:update_with(CP, fun (V0) when is_list(V0) -> V0 ++ [V];
+                             (V0)                  -> [V0, V]
                          end, V , Acc).
 
 

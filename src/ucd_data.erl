@@ -18,6 +18,7 @@ new() -> #{}.
 values(Kind, Data) when Kind == bidi_class
                       ; Kind == bidi_mirrored
                       ; Kind == bidi_mirroring
+                      ; Kind == brackets
                       ; Kind == blocks
                       ; Kind == category
                       ; Kind == combining_class
@@ -65,7 +66,13 @@ values(Kind, Data) when Kind == full_composition_exclusion
     derived_norm_props_values(Kind, Data);
 
 values(prop_list, Data)  ->
-    prop_list_values(Data).
+    prop_list_values(Data);
+
+values(canonical_equivalence, Data) ->
+    canonical_equivalence_values(Data);
+
+values(bidi_brackets, Data) ->
+    bidi_brackets_values(Data).
 
 
 values(name_aliases, Types, Data) ->
@@ -217,6 +224,52 @@ prop_list_values(#prop_list{code=Code, property=V}, Acc) ->
 
 prop_list_add(CP, V, Acc) ->
     maps:update_with(CP, fun (Vs) -> [V | Vs] end, [V] , Acc).
+
+
+canonical_equivalence_values(Data) ->
+    {Vs1, Data1} = data_values(decomposition, Data),
+    {lists:foldl(fun canonical_equivalence_values/2, [], Vs1), Data1}.
+
+canonical_equivalence_values({CP1, [CP2]}, Acc) ->
+    [{CP1, CP2}, {CP2, CP1} | Acc];
+
+canonical_equivalence_values(_, Acc) ->
+    Acc.
+
+
+bidi_brackets_values(Data) ->
+    {Brackets, Data1} = values(brackets, Data),
+    {BidiMirroring, Data2} = values(bidi_mirroring, Data1),
+    {Eq, Data3} = values(canonical_equivalence, Data2),
+    {bidi_brackets_values(BidiMirroring, Brackets, Eq), Data3}.
+
+bidi_brackets_values(BidiMirroring, Brackets, Eq) ->
+    BidiMap = maps:from_list(BidiMirroring),
+    BracketsMap = maps:from_list(Brackets),
+    EqMap = maps:from_list(Eq),
+    lists:foldr(fun (V, Acc) ->
+                     bidi_brackets_data(V, BidiMap, BracketsMap, EqMap, Acc)
+                end, [], BidiMirroring).
+
+bidi_brackets_data({CP1, CP2}, BidiMap, BracketsMap, EqMap, Acc) ->
+    case maps:get(CP1, BracketsMap, undefined) of
+        undefined ->
+            Acc;
+        Type ->
+            OCPs = bidi_bracket_opposites(CP1, CP2, BidiMap, EqMap),
+            [{CP1, {Type, OCPs}} | Acc]
+    end.
+
+bidi_bracket_opposites(CP1, CP2, BidiMap, EqMap) ->
+    case maps:get(CP1, EqMap, undefined) of
+        undefined ->
+            [CP2];
+        CP ->
+            case maps:get(CP, BidiMap, undefined) of
+                undefined -> [CP2];
+                DCP2      -> [CP2, DCP2]
+            end
+    end.
 
 
 codepoints_values(Vs, Filter) ->
@@ -434,6 +487,15 @@ data_value(decomposition, #unicode_data{code=C, decomposition=V}) -> {C, V};
 data_value(bidi_mirrored, #unicode_data{code=C, bidi_mirrored=V}) -> {C, V};
 data_value(combining_class, #unicode_data{code=C, combining_class=V}) -> {C, V};
 
+data_value(brackets, #unicode_data{bidi_class='ON', bidi_mirrored=true}=V) ->
+    case V#unicode_data.category of
+        'Ps' -> {V#unicode_data.code, open};
+        'Pe' -> {V#unicode_data.code, close};
+        _    -> undefined
+    end;
+data_value(brackets, _) ->
+    undefined;
+
 data_value(_, #block{range=R,name=N}) -> {R,N};
 data_value(_, #line_break{code=C,value=V}) -> {C,V};
 data_value(_, #composition_exclusions{codepoint=C}) -> C;
@@ -493,7 +555,8 @@ data(Key, Data) when Key == name
                    ; Key == bidi_mirrored
                    ; Key == uppercase
                    ; Key == lowercase
-                   ; Key == titlecase ->
+                   ; Key == titlecase
+                   ; Key == brackets ->
     data(unicode_data, Data);
 
 data(Key, Data) when Key == common_case_folding

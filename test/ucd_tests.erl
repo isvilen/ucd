@@ -252,6 +252,7 @@ specialized_funs_test_() ->
                   ,"ccn(CP)-> ucd:combining_class(CP, not [0, 230])."
                   ,"name_correction(CP)-> ucd:name_aliases(CP, correction)."
                   ,"composition(CP1,CP2) -> ucd:composition(CP1,CP2)."
+                  ,"bracket(CP) -> ucd:bidi_bracket(CP)."
                   ])
           end,
           fun code:purge/1,
@@ -291,6 +292,8 @@ specialized_funs_test_() ->
 
   , ?_assertEqual(16#00C0, ucd_special:composition(16#0041, 16#0300))
   , ?_assertEqual(undefined, ucd_special:composition(16#0915, 16#093C))
+
+  , ?_assertEqual({open, [$}]}, ucd_special:bracket(${))
   ]}.
 
 

@@ -48,7 +48,8 @@ add(Name, [Arg], Ctx) when Name == category
                          ; Name == block
                          ; Name == name
                          ; Name == range
-                         ; Name == prop_list ->
+                         ; Name == prop_list
+                         ; Name == bidi_bracket ->
     Fun = fun_name(Name),
     {ok, ?Q("'@Fun@'(_@Arg)"), sets:add_element(Name, Ctx)};
 
@@ -115,7 +116,8 @@ form(Name, Data) when Name == decomposition
                     ; Name == simple_case_folding
                     ; Name == full_case_folding
                     ; Name == turkic_case_folding
-                    ; Name == name ->
+                    ; Name == name
+                    ; Name == bidi_bracket ->
     codepoint_data_fun(Name, Data, fun map_ast/3);
 
 form(Name, Data) when Name == block
@@ -235,6 +237,9 @@ data_values(numeric, Data) ->
     {Vs1, Data1} = ucd_data:values(numeric, Data),
     {Vs2, Data2} = ucd_data:values(unihan_numeric_values, Data1),
     {Vs1 ++ Vs2, Data2};
+
+data_values(bidi_bracket, Data) ->
+    ucd_data:values(bidi_brackets, Data);
 
 data_values(Kind, Data)  ->
     ucd_data:values(Kind, Data).

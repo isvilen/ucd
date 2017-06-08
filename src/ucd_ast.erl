@@ -79,6 +79,13 @@ add(Name, [Arg], Ctx) when Name == normalize_name ->
     Ctx1 = sets:add_element(normalize_name_1, Ctx),
     {ok, ?Q("'@Fun@'(_@Arg)"), sets:add_element(Name, Ctx1)};
 
+add(Name, [Arg], Ctx) when Name == lookup_name ->
+    Fun = fun_name(Name),
+    Ctx1 = sets:add_element(lookup_codepoint, Ctx),
+    Ctx2 = sets:add_element(normalize_name, Ctx1),
+    Ctx3 = sets:add_element(normalize_name_1, Ctx2),
+    {ok, ?Q("'@Fun@'(_@Arg)"), sets:add_element(Name, Ctx3)};
+
 add(Fun, _Args, _Ctx) ->
     {error, io_lib:format("invalid UCD function: ~s", [Fun])}.
 
@@ -136,6 +143,21 @@ form(Name, Data) when Name == blocks
 
 form(Name, Data) when Name == composition ->
     codepoint2_data_fun(Name, Data, fun map_ast/3);
+
+form(Name, Data) when Name == lookup_name ->
+    codepoint_lookup_fun(Name, Data);
+
+form(lookup_codepoint, Data) ->
+    Fun = fun_name(lookup_codepoint),
+    AST = ?Q(["'@Fun@'(_, From, To, _) when From >= To -> undefined;"
+             ,"'@Fun@'(Hash, From, To, Data) ->"
+             ,"  Pos = From + (To - From) div 2,"
+             ,"  case binary:part(Data, Pos*6, 6) of"
+             ,"    <<Hash:27,CP:21>>           -> CP;"
+             ,"    <<H:27,_:21>> when H > Hash -> '@Fun@'(Hash, From, Pos, Data);"
+             ,"    _                           -> '@Fun@'(Hash, Pos+1, To, Data)"
+             ,"  end."]),
+    {AST, Data};
 
 form(normalize_name, Data) ->
     Fun = fun_name(normalize_name),
@@ -225,6 +247,33 @@ codepoint2_data_fun(Name, Data, ASTFun) ->
     ,Data1}.
 
 
+codepoint_lookup_fun(Name, Data) ->
+    Fun = fun_name(Name),
+    NormNameFun = fun_name(normalize_name),
+    LookupFun = fun_name(lookup_codepoint),
+    AST = case lookup_values(Name, Data) of
+              {{LookupData, Size, []}, Data1} ->
+                  ?Q(["'@Fun@'(Name) ->"
+                     ,"  N1 = '@NormNameFun@'(Name),"
+                     ,"  Hash = erlang:phash2(N1),"
+                     ,"  '@LookupFun@'(Hash, 0, _@Size@, _@LookupData@)."]);
+              {{LookupData, Size, Collisions}, Data1} ->
+                  ?Q(["'@Fun@'(Name) ->"
+                     ,"  N1 = '@NormNameFun@'(Name),"
+                     ,"  Hash = erlang:phash2(N1),"
+                     ,"  case lists:keyfind(Hash, 1, _@Collisions@) of"
+                     ,"    false ->"
+                     ,"      '@LookupFun@'(Hash, 0, _@Size@, _@LookupData@);"
+                     ,"    {_, Collisions} ->"
+                     ,"      case lists:keyfind(N1, 2, Collisions) of"
+                     ,"        false   -> undefined;"
+                     ,"        {CP, _} -> CP"
+                     ,"      end"
+                     ,"  end."])
+          end,
+    {AST, Data1}.
+
+
 static_data_fun(Name, Data) ->
     Fun = fun_name(Name),
     {Values, Data1} = data_values(Name, Data),
@@ -296,6 +345,33 @@ data_values(Kind, Filter, Data) when Kind == name_aliases ->
 data_values(Kind, Filter, Data) ->
     {Vs, Data1} = ucd_data:values(Kind, Filter, Data),
     {[{C, true} || C <- Vs], Data1}.
+
+
+lookup_values(lookup_name, Data) ->
+    {Vs, Data1} = ucd_data:values(name, Data),
+    {lookup_values(Vs), Data1}.
+
+lookup_values(Values) ->
+    ValuesMap = lookup_values_fold(Values, #{}),
+    {Vs, Collisions} = lookup_values_split(ValuesMap),
+    Vs1 = lists:keysort(1, Vs),
+    Vs2 = << <<H:27,V:21>> || {H,V} <- Vs1 >>,
+    {Vs2, length(Vs1), Collisions}.
+
+lookup_values_fold(Data, Acc) ->
+    lists:foldl(fun ({CP, Name}, Acc0) ->
+                        N = normalize_name(Name),
+                        V = {CP, N},
+                        maps:update_with(erlang:phash2(N),
+                                         fun (V0) when is_list(V0) -> [V | V0];
+                                             (V0)                  -> [V , V0]
+                                         end, V , Acc0)
+                end, Acc, Data).
+
+lookup_values_split(Values) ->
+    maps:fold(fun (K, {CP, _}, {Acc1, Acc2}) -> {[{K,CP} | Acc1], Acc2};
+                  (K, Vs,      {Acc1, Acc2}) -> {Acc1, [{K,Vs} | Acc2]}
+              end, {[], []}, Values).
 
 
 data_default(composition_exclusion)        -> false;

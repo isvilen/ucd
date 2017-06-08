@@ -221,6 +221,7 @@ name_data_funs_test_() ->
                   ,"name(CP) -> ucd:name(CP)."
                   ,"range(CP) -> ucd:range(CP)."
                   ,"ranges() -> ucd:ranges()."
+                  ,"lookup_name(Name) -> ucd:lookup_name(Name)."
                   ])
           end,
           fun code:purge/1,
@@ -234,6 +235,13 @@ name_data_funs_test_() ->
   , ?_assertEqual({cjk_ideograph,{extension,"A"}}, ucd_name:range(16#3400))
   , ?_assertEqual(hangul_syllable, ucd_name:range(16#AC00))
   , ?_assertEqual({high_surrogate, non_private_use}, ucd_name:range(16#D800))
+
+  , ?_assertEqual($A,
+                  ucd_name:lookup_name(<<"LATIN CAPITAL LETTER A">>))
+  , ?_assertEqual(16#A7AA,
+                  ucd_name:lookup_name(<<"LATIN CAPITAL LETTER H WITH HOOK">>))
+  , ?_assertEqual(16#32D9,
+                  ucd_name:lookup_name(<<"CIRCLED KATAKANA KO">>))
   ]}.
 
 

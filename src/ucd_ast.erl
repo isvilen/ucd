@@ -12,7 +12,7 @@ add(Name, [], Ctx) when Name == blocks
                       ; Name == named_sequences
                       ; Name == ranges ->
     Fun = fun_name(Name),
-    {ok, ?Q("'@Fun@'()"), sets:add_element(Name, Ctx)};
+    {ok, ?Q("'@Fun@'()"), add_fun(Name, Ctx)};
 
 add(Name, [Arg], Ctx) when Name == category
                          ; Name == combining_class
@@ -51,7 +51,7 @@ add(Name, [Arg], Ctx) when Name == category
                          ; Name == prop_list
                          ; Name == bidi_bracket ->
     Fun = fun_name(Name),
-    {ok, ?Q("'@Fun@'(_@Arg)"), sets:add_element(Name, Ctx)};
+    {ok, ?Q("'@Fun@'(_@Arg)"), add_fun(Name, Ctx)};
 
 add(Name, [Arg1, Arg2], Ctx) when Name == prop_list
                                 ; Name == category
@@ -65,41 +65,44 @@ add(Name, [Arg1, Arg2], Ctx) when Name == prop_list
     try validate_fun_arg(Name, Arg2) of
         V ->
             Fun = fun_name(Name, V),
-            {ok, ?Q("'@Fun@'(_@Arg1)"), sets:add_element({Name, V}, Ctx)}
+            {ok, ?Q("'@Fun@'(_@Arg1)"), add_fun({Name, V}, Ctx)}
     catch
         throw:Error -> {error, Error}
     end;
 
 add(Name, [Arg1, Arg2], Ctx) when Name == composition ->
     Fun = fun_name(Name),
-    {ok, ?Q("'@Fun@'(_@Arg1, _@Arg2)"), sets:add_element(Name, Ctx)};
+    {ok, ?Q("'@Fun@'(_@Arg1, _@Arg2)"), add_fun(Name, Ctx)};
 
 add(Name, [Arg], Ctx) when Name == normalize_name ->
     Fun = fun_name(Name),
-    Ctx1 = sets:add_element(normalize_name_1, Ctx),
-    {ok, ?Q("'@Fun@'(_@Arg)"), sets:add_element(Name, Ctx1)};
+    Needed = [normalize_name_1],
+    {ok, ?Q("'@Fun@'(_@Arg)"), add_fun([Name | Needed], Ctx)};
 
 add(Name, [Arg], Ctx) when Name == lookup_name ->
     Fun = fun_name(Name),
-    Ctx1 = sets:add_element(lookup_codepoint, Ctx),
-    Ctx2 = sets:add_element(normalize_name, Ctx1),
-    Ctx3 = sets:add_element(normalize_name_1, Ctx2),
-    {ok, ?Q("'@Fun@'(_@Arg)"), sets:add_element(Name, Ctx3)};
+    Needed = [lookup_codepoint, normalize_name, normalize_name_1],
+    {ok, ?Q("'@Fun@'(_@Arg)"), add_fun([Name | Needed], Ctx)};
 
 add(Name, [Arg1, Arg2], Ctx) when Name == lookup_aliases ->
     try validate_fun_arg(Name, Arg2) of
         V ->
             Fun = fun_name(Name, V),
-            Ctx1 = sets:add_element(lookup_codepoint, Ctx),
-            Ctx2 = sets:add_element(normalize_name, Ctx1),
-            Ctx3 = sets:add_element(normalize_name_1, Ctx2),
-            {ok, ?Q("'@Fun@'(_@Arg1)"), sets:add_element({Name, V}, Ctx3)}
+            Needed = [lookup_codepoint, normalize_name, normalize_name_1],
+            {ok, ?Q("'@Fun@'(_@Arg1)"), add_fun([{Name, V} | Needed], Ctx)}
     catch
         throw:Error -> {error, Error}
     end;
 
 add(Fun, _Args, _Ctx) ->
     {error, io_lib:format("invalid UCD function: ~s", [Fun])}.
+
+
+add_fun(Names, Ctx) when is_list(Names) ->
+    lists:foldl(fun sets:add_element/2, Ctx, Names);
+
+add_fun(Name, Ctx) ->
+    sets:add_element(Name, Ctx).
 
 
 forms(Ctx) ->

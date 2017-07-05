@@ -4,16 +4,16 @@
 
 
 unicode_data_test_() -> {setup, fun ucd_db:unicode_data/0, {with, [
-  fun (Data) -> ?assertEqual(30578, length(Data)) end
- ,fun (Data) -> ?assertEqual(30564, length([C || #unicode_data{code=C} <- Data, is_integer(C)])) end
- ,fun (Data) -> ?assertEqual(14,    length([C || #unicode_data{code=C} <- Data, is_tuple(C)])) end
+  fun (Data) -> ?assertEqual(31603, length(Data)) end
+ ,fun (Data) -> ?assertEqual(31588, length([C || #unicode_data{code=C} <- Data, is_integer(C)])) end
+ ,fun (Data) -> ?assertEqual(15,    length([C || #unicode_data{code=C} <- Data, is_tuple(C)])) end
  ,fun (Data) ->
       CPs = [ CP || #unicode_data{code=CP, category=Cat} <- Data
             , Cat /= 'Co'
             , Cat /= 'Cs'
             , Cat /= 'Cc'
             ],
-      ?assertEqual(128172, count(CPs))
+      ?assertEqual(136690, count(CPs))
   end
  ,fun (Data) ->
       Cats = ['Lu', 'Ll', 'Lt', 'Lm', 'Lo'
@@ -51,7 +51,7 @@ bidi_mirroring_test_() -> {setup, fun ucd_db:bidi_mirroring/0, {with, [
 
 prop_list_test_() -> {setup, fun ucd_db:prop_list/0, {with, [
   fun (Data) ->
-      ?assertEqual(180395, count([C || #prop_list{code=C} <- Data]))
+      ?assertEqual(195895, count([C || #prop_list{code=C} <- Data]))
   end
  ,fun (Data) ->
       ?assertEqual(25, count([C || #prop_list{code=C, property=white_space} <- Data]))
@@ -72,7 +72,7 @@ prop_list_test_() -> {setup, fun ucd_db:prop_list/0, {with, [
               , logical_order_exception, other_id_start, other_id_continue
               , sentence_terminal, variation_selector, pattern_white_space
               , pattern_syntax, prepended_concatenation_mark
-              , other_default_ignorable_code_point ],
+              , other_default_ignorable_code_point, regional_indicator ],
       lists:foreach(fun(#prop_list{property=P}) -> ?assert(lists:member(P, Props), P) end, Data)
   end
 ]}}.

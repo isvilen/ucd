@@ -64,19 +64,19 @@ derived_normalization_props() ->
 
 -spec grapheme_break_property() -> [#grapheme_break_property{}].
 grapheme_break_property() ->
-    Vs = fold_lines(fun grapheme_break_property/2, "GraphemeBreakProperty.txt"),
+    Vs = fold_lines(fun grapheme_break_property/2, "auxiliary/GraphemeBreakProperty.txt"),
     sort_by_codepoints(Vs, #grapheme_break_property.code).
 
 
 -spec word_break_property() -> [#word_break_property{}].
 word_break_property() ->
-    Vs = fold_lines(fun word_break_property/2, "WordBreakProperty.txt"),
+    Vs = fold_lines(fun word_break_property/2, "auxiliary/WordBreakProperty.txt"),
     sort_by_codepoints(Vs, #word_break_property.code).
 
 
 -spec sentence_break_property() -> [#sentence_break_property{}].
 sentence_break_property() ->
-    Vs = fold_lines(fun sentence_break_property/2, "SentenceBreakProperty.txt"),
+    Vs = fold_lines(fun sentence_break_property/2, "auxiliary/SentenceBreakProperty.txt"),
     sort_by_codepoints(Vs, #sentence_break_property.code).
 
 

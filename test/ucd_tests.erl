@@ -210,8 +210,10 @@ static_data_funs_test_() ->
           end,
           fun code:purge/1,
   [ ?_assertEqual({{0,127}, <<"Basic Latin">>}, lists:nth(1,ucd_static:blocks()))
-  , ?_assertEqual({<<"LATIN CAPITAL LETTER A WITH MACRON AND GRAVE">>, [16#0100, 16#0300]},
+  , ?_assertEqual({<<"KEYCAP NUMBER SIGN">>, [16#0023, 16#FE0F, 16#20E3]},
                   lists:nth(1,ucd_static:named_sequences()))
+  , ?_assertEqual({<<"LATIN CAPITAL LETTER A WITH MACRON AND GRAVE">>, [16#0100, 16#0300]},
+                  lists:nth(13,ucd_static:named_sequences()))
   ]}.
 
 

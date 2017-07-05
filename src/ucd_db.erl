@@ -19,6 +19,7 @@
         , bidi_class_defaults/0
         , east_asian_width_defaults/0
         , line_break_defaults/0
+        , file/1
         ]).
 
 -include_lib("stdlib/include/zip.hrl").
